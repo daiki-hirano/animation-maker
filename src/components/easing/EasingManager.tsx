@@ -18,7 +18,7 @@ import {
   updateCustomEasing,
 } from "@/utils/settings/custom-easings";
 import { BezierEditor } from "./BezierEditor";
-import { EasingComparePreview } from "./EasingComparePreview";
+import { EasingPreview } from "./EasingPreview";
 import { EasingLibrary } from "./EasingLibrary";
 
 const DEFAULT_ID = "ease";
@@ -230,11 +230,11 @@ export function EasingManager() {
         </section>
 
         <section
-          aria-label="プレビューと比較"
+          aria-label="プレビュー"
           className={`${card} sticky top-20 flex max-h-[calc(100dvh-6rem)] flex-col gap-4 self-start overflow-auto p-4 sm:p-5`}
         >
-          <h2 className="text-sm font-semibold">プレビューと比較</h2>
-          <EasingComparePreview current={draftEasing} easings={easings} />
+          <h2 className="text-sm font-semibold">プレビュー</h2>
+          <EasingPreview current={draftEasing} />
 
           <div className="flex min-w-0 flex-col gap-4 border-t border-border pt-4">
             <h3 className="text-sm font-semibold">コード</h3>
