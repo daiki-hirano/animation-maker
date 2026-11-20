@@ -21,6 +21,8 @@ export interface TargetConfig {
     /** 生成コードに出力するパス */
     src: string;
     alt: string;
+    /** true なら <figure> で囲み、figure にアニメーションをかける */
+    wrapper: boolean;
   };
 }
 
@@ -36,9 +38,14 @@ export interface MotionState {
   rotate: number;
   /** px */
   blur: number;
+  /** mask-position の値（%）。マスクの向きの軸方向 */
+  mask: number;
 }
 
 export type MotionKey = keyof MotionState;
+
+/** マスクの表示向き（どちらから表示されるか） */
+export type MaskDirection = "left" | "right" | "top" | "bottom";
 
 /** translate の単位（X / Y・開始 / 終了で共通） */
 export type TranslateUnit = "px" | "%";
@@ -50,13 +57,6 @@ export interface TimingConfig {
   delay: number;
   /** イージングの id（組み込み or カスタム） */
   easing: string;
-}
-
-export type TransitionPropertyMode = "auto" | "all";
-
-export interface TransitionConfig {
-  /** auto: 変化するプロパティのみ / all: transition: all */
-  property: TransitionPropertyMode;
 }
 
 export type KeyframesDirection =
@@ -99,29 +99,26 @@ export interface AnimationConfig {
   cssMethod: CssMethod;
   target: TargetConfig;
   timing: TimingConfig;
-  transition: TransitionConfig;
   keyframes: KeyframesConfig;
   gsap: GsapConfig;
   from: MotionState;
   to: MotionState;
   translateUnit: TranslateUnit;
+  /** マスクの表示向き。どちらから表示されるか */
+  maskDirection: MaskDirection;
   trigger: TriggerConfig;
 }
 
 /** コントロールパネルのセクション。プリセットでは表示するものを絞れる */
-export type PanelSectionId =
-  | "target"
-  | "engine"
-  | "timing"
-  | "motion"
-  | "gsapPlugin"
-  | "trigger";
+export type PanelSectionId = "target" | "timing" | "motion" | "gsapPlugin";
 
-/** プリセット定義（今後追加予定） */
+/** プリセット定義 */
 export interface AnimationPreset {
   id: string;
   name: string;
   description?: string;
+  /** アニメーション GIF のパス（/public 配下）。未指定ならカード内でアニメーションをライブ再生する */
+  thumbnail?: string;
   config: AnimationConfig;
   /** パネルに表示するセクション。未指定なら全て */
   sections?: PanelSectionId[];

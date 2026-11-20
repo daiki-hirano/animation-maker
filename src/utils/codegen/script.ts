@@ -62,7 +62,6 @@ export function buildVanillaScript(
   easing: Easing,
 ): string | null {
   const { trigger } = config;
-  const cls = trigger.className;
   const select = `const targets = document.querySelectorAll(".${TARGET_CLASS}");`;
 
   if (config.engine === "css") {
@@ -100,24 +99,11 @@ export function buildVanillaScript(
     `};`,
   ].join("\n");
 
-  const setup = [`const tweens = new Map();`, `targets.forEach((el) => tweens.set(el, createTween(el)));`];
-
-  // クラスの付与を MutationObserver で監視
   const body = [
-    ...setup,
+    `const tweens = [...targets].map((el) => createTween(el));`,
     "",
-    `// .${cls} が付与されたら再生、外れたら先頭に戻す`,
-    `const mutationObserver = new MutationObserver((mutations) => {`,
-    `  mutations.forEach(({ target }) => {`,
-    `    const tween = tweens.get(target);`,
-    `    if (target.classList.contains("${cls}")) tween?.play();`,
-    `    else tween?.pause(0);`,
-    `  });`,
-    `});`,
-    "",
-    `targets.forEach((el) =>`,
-    `  mutationObserver.observe(el, { attributes: true, attributeFilter: ["class"] }),`,
-    `);`,
+    `// 任意のタイミングで再生する`,
+    `// tweens.forEach((tween) => tween.play());`,
   ].join("\n");
   return [imports, "", select, "", factory, "", wrapFonts(body)].join("\n");
 }

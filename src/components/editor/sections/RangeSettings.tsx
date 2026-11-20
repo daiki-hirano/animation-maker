@@ -11,7 +11,7 @@ import {
 } from "@/utils/settings/slider-ranges";
 
 /** 「動き」スライダーの最小値 / 最大値を編集する */
-export function RangeSettings({ id }: { id: string }) {
+export function RangeSettings() {
   const ranges = useSliderRanges();
   const [error, setError] = useState<{ key: RangeKey; message: string } | null>(null);
 
@@ -31,7 +31,7 @@ export function RangeSettings({ id }: { id: string }) {
   };
 
   return (
-    <div id={id} className="flex flex-col gap-3 rounded-lg border border-border bg-surface-muted/50 p-3">
+    <div className="flex flex-col gap-3">
       <div className="grid grid-cols-[1fr_5rem_5rem] items-center gap-x-2 gap-y-2">
         <span className="text-xs font-medium text-muted">項目</span>
         <span className="text-right text-xs font-medium text-muted">最小</span>

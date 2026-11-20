@@ -9,6 +9,7 @@ export const NEUTRAL_STATE: MotionState = {
   scale: 1,
   rotate: 0,
   blur: 0,
+  mask: 0,
 };
 
 export const DEFAULT_CONFIG: AnimationConfig = {
@@ -18,10 +19,9 @@ export const DEFAULT_CONFIG: AnimationConfig = {
     type: "text",
     text: "Hello Animation",
     tag: "span",
-    image: { src: "/sample.svg", alt: "" },
+    image: { src: "/sample.svg", alt: "", wrapper: true },
   },
   timing: { duration: 0.8, delay: 0, easing: DEFAULT_EASING_ID },
-  transition: { property: "auto" },
   keyframes: { iterationCount: 1, direction: "normal", fillMode: "both" },
   gsap: {
     repeat: 0,
@@ -32,6 +32,7 @@ export const DEFAULT_CONFIG: AnimationConfig = {
   from: { ...NEUTRAL_STATE, opacity: 0, y: 40 },
   to: { ...NEUTRAL_STATE },
   translateUnit: "px",
+  maskDirection: "left",
   trigger: {
     mode: "class",
     className: "is-show",

@@ -1,7 +1,7 @@
 /** cubic-bezier の制御点 [x1, y1, x2, y2] */
 export type Bezier = [x1: number, y1: number, x2: number, y2: number];
 
-export type EasingGroup = "standard" | "gsap" | "custom";
+export type EasingGroup = "standard" | "easings" | "custom";
 
 export interface Easing {
   /** CustomEase の id としても使うため [a-zA-Z0-9-] のみ */
@@ -17,7 +17,7 @@ export interface Easing {
 
 export const EASING_GROUP_LABELS: Record<EasingGroup, string> = {
   standard: "標準",
-  gsap: "GSAP",
+  easings: "easings.net",
   custom: "カスタム",
 };
 
@@ -29,18 +29,15 @@ const standard = (
   gsap: string,
 ): Easing => ({ id, name: id, bezier, group: "standard", css: id, gsap });
 
-const gsapEase = (id: string, name: string, bezier: Bezier): Easing => ({
-  id,
-  name,
-  bezier,
-  group: "gsap",
-  gsap: name,
-});
+const easingsNet = (
+  id: string,
+  bezier: Bezier,
+  gsap: string,
+): Easing => ({ id, name: id, bezier, group: "easings", gsap });
 
 /**
- * 組み込みイージング。gsap は同等の GSAP ネイティブ名（ease のみ近似）。
- * gsap グループの bezier は GSAP ease の計算式を近似した
- * easings.net の cubic-bezier 値（最大差は約 4%）。
+ * 組み込みイージング。easings.net グループは easings.net の名前と cubic-bezier 値に従う。
+ * GSAP 出力では同等のネイティブ ease（power3.out など）を使う（近似で最大差は約 4%）。
  * CSS 出力は bezier、GSAP 出力はネイティブ名を使う。
  */
 export const BUILTIN_EASINGS: Easing[] = [
@@ -49,15 +46,20 @@ export const BUILTIN_EASINGS: Easing[] = [
   standard("ease-in", [0.42, 0, 1, 1], "power1.in"),
   standard("ease-out", [0, 0, 0.58, 1], "power1.out"),
   standard("ease-in-out", [0.42, 0, 0.58, 1], "power1.inOut"),
-  gsapEase("power2-out", "power2.out", [0.33, 1, 0.68, 1]),
-  gsapEase("power3-out", "power3.out", [0.25, 1, 0.5, 1]),
-  gsapEase("power4-out", "power4.out", [0.22, 1, 0.36, 1]),
-  gsapEase("expo-out", "expo.out", [0.16, 1, 0.3, 1]),
-  gsapEase("circ-out", "circ.out", [0, 0.55, 0.45, 1]),
-  gsapEase("power2-inOut", "power2.inOut", [0.65, 0, 0.35, 1]),
-  gsapEase("power4-inOut", "power4.inOut", [0.83, 0, 0.17, 1]),
-  gsapEase("expo-inOut", "expo.inOut", [0.87, 0, 0.13, 1]),
-  gsapEase("circ-inOut", "circ.inOut", [0.85, 0, 0.15, 1]),
+  easingsNet("easeOutSine", [0.61, 1, 0.88, 1], "sine.out"),
+  easingsNet("easeInOutSine", [0.37, 0, 0.63, 1], "sine.inOut"),
+  easingsNet("easeInQuad", [0.11, 0, 0.5, 0], "power1.in"),
+  easingsNet("easeOutQuad", [0.5, 1, 0.89, 1], "power1.out"),
+  easingsNet("easeInOutQuad", [0.45, 0, 0.55, 1], "power1.inOut"),
+  easingsNet("easeOutCubic", [0.33, 1, 0.68, 1], "power2.out"),
+  easingsNet("easeInOutCubic", [0.65, 0, 0.35, 1], "power2.inOut"),
+  easingsNet("easeOutQuart", [0.25, 1, 0.5, 1], "power3.out"),
+  easingsNet("easeOutQuint", [0.22, 1, 0.36, 1], "power4.out"),
+  easingsNet("easeInOutQuint", [0.83, 0, 0.17, 1], "power4.inOut"),
+  easingsNet("easeOutExpo", [0.16, 1, 0.3, 1], "expo.out"),
+  easingsNet("easeInOutExpo", [0.87, 0, 0.13, 1], "expo.inOut"),
+  easingsNet("easeOutCirc", [0, 0.55, 0.45, 1], "circ.out"),
+  easingsNet("easeInOutCirc", [0.85, 0, 0.15, 1], "circ.inOut"),
 ];
 
 /** id からイージングを解決する。見つからなければ既定の組み込みに戻し missing: true を返す */

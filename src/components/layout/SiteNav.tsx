@@ -7,7 +7,7 @@ import { cn } from "@/utils/cn";
 const NAV_ITEMS = [
   { href: "/create", label: "新規作成", ready: true },
   { href: "/easings", label: "イージング", ready: true },
-  { href: "/presets", label: "プリセット", ready: false },
+  { href: "/presets", label: "プリセット", ready: true },
 ] as const;
 
 export function SiteNav() {

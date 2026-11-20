@@ -1,5 +1,11 @@
 import { gsapEaseName, type Easing } from "./easings";
-import type { AnimationConfig, MotionKey, MotionState, TranslateUnit } from "./types";
+import type {
+  AnimationConfig,
+  MaskDirection,
+  MotionKey,
+  MotionState,
+  TranslateUnit,
+} from "./types";
 
 export const MOTION_KEYS: MotionKey[] = [
   "opacity",
@@ -8,7 +14,47 @@ export const MOTION_KEYS: MotionKey[] = [
   "scale",
   "rotate",
   "blur",
+  "mask",
 ];
+
+const MASK_STOPS = "#000 0%, #000 50%, transparent 60%, transparent 100%";
+
+/** 向きごとのマスク定義（値は固定）。position の v はスライダーの値（コードに書く数値そのまま） */
+export const MASK_DEFS: Record<
+  MaskDirection,
+  { image: string; size: string; position: (v: number) => string }
+> = {
+  left: {
+    image: `linear-gradient(to right, ${MASK_STOPS})`,
+    size: "300% 100%",
+    position: (v) => `${v}% 0%`,
+  },
+  right: {
+    image: `linear-gradient(to left, ${MASK_STOPS})`,
+    size: "300% 100%",
+    position: (v) => `${v}% 0%`,
+  },
+  top: {
+    image: `linear-gradient(to bottom, ${MASK_STOPS})`,
+    size: "100% 300%",
+    position: (v) => `0% ${v}%`,
+  },
+  bottom: {
+    image: `linear-gradient(to top, ${MASK_STOPS})`,
+    size: "100% 300%",
+    position: (v) => `0% ${v}%`,
+  },
+};
+
+/** right / bottom は left / top と値が反転する（0 が非表示側） */
+export function isMirrored(direction: MaskDirection) {
+  return direction === "right" || direction === "bottom";
+}
+
+/** mask-position の値（CSS / GSAP 共通） */
+export function maskPositionValue(value: number, direction: MaskDirection) {
+  return MASK_DEFS[direction].position(round(value));
+}
 
 /** 小数のノイズを除去 */
 export function round(n: number, digits = 3) {
@@ -27,8 +73,9 @@ const TRANSFORM_KEYS: MotionKey[] = ["x", "y", "scale", "rotate"];
 export function stateToCss(
   state: MotionState,
   keys: MotionKey[],
-  unit: TranslateUnit,
+  opts: { unit: TranslateUnit; maskDirection: MaskDirection },
 ): [string, string][] {
+  const { unit, maskDirection } = opts;
   const decls: [string, string][] = [];
   if (keys.includes("opacity")) decls.push(["opacity", `${round(state.opacity)}`]);
 
@@ -41,6 +88,9 @@ export function stateToCss(
   if (transforms.length) decls.push(["transform", transforms.join(" ")]);
 
   if (keys.includes("blur")) decls.push(["filter", `blur(${round(state.blur)}px)`]);
+  if (keys.includes("mask")) {
+    decls.push(["mask-position", maskPositionValue(state.mask, maskDirection)]);
+  }
   return decls;
 }
 
@@ -50,12 +100,18 @@ export function cssPropertyNames(keys: MotionKey[]): string[] {
   if (keys.includes("opacity")) names.push("opacity");
   if (keys.some((k) => TRANSFORM_KEYS.includes(k))) names.push("transform");
   if (keys.includes("blur")) names.push("filter");
+  if (keys.includes("mask")) names.push("mask-position");
   return names;
 }
 
 export type GsapVars = Record<string, number | string | boolean | object>;
 
-function stateToGsap(state: MotionState, keys: MotionKey[], unit: TranslateUnit): GsapVars {
+function stateToGsap(
+  state: MotionState,
+  keys: MotionKey[],
+  unit: TranslateUnit,
+  maskDirection: MaskDirection,
+): GsapVars {
   const vars: GsapVars = {};
   // % は GSAP では xPercent / yPercent で指定する
   const [xProp, yProp] = unit === "%" ? ["xPercent", "yPercent"] : ["x", "y"];
@@ -65,6 +121,7 @@ function stateToGsap(state: MotionState, keys: MotionKey[], unit: TranslateUnit)
   if (keys.includes("scale")) vars.scale = round(state.scale);
   if (keys.includes("rotate")) vars.rotation = round(state.rotate);
   if (keys.includes("blur")) vars.filter = `blur(${round(state.blur)}px)`;
+  if (keys.includes("mask")) vars.maskPosition = maskPositionValue(state.mask, maskDirection);
   return vars;
 }
 
@@ -79,7 +136,7 @@ export function buildGsapVars(
   const keys = changedKeys(config.from, config.to);
   const { timing, gsap } = config;
   const to: GsapVars = {
-    ...stateToGsap(config.to, keys, config.translateUnit),
+    ...stateToGsap(config.to, keys, config.translateUnit, config.maskDirection),
     duration: round(timing.duration),
     ease: gsapEaseName(easing),
   };
@@ -87,7 +144,10 @@ export function buildGsapVars(
   if (gsap.repeat !== 0) to.repeat = gsap.repeat;
   if (gsap.yoyo && gsap.repeat !== 0) to.yoyo = true;
   if (usesSplitText(config)) to.stagger = round(gsap.splitText.stagger);
-  return { from: stateToGsap(config.from, keys, config.translateUnit), to };
+  return {
+    from: stateToGsap(config.from, keys, config.translateUnit, config.maskDirection),
+    to,
+  };
 }
 
 export function usesSplitText(config: AnimationConfig) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { CirclePause } from "lucide-react";
@@ -9,8 +9,14 @@ import { SplitText } from "gsap/SplitText";
 import { Button } from "@/components/ui";
 import { customEaseData, needsCustomEase, type Easing } from "@/utils/animation/easings";
 import { buildGsapVars, usesSplitText } from "@/utils/animation/motion";
-import type { AnimationConfig, TriggerMode } from "@/utils/animation/types";
-import { generatePreviewCss } from "@/utils/codegen";
+import type { AnimationConfig } from "@/utils/animation/types";
+import {
+  generatePreviewCss,
+  PREVIEW_HOLD_CLASS,
+  PREVIEW_REST_CLASS,
+  previewHoldCss,
+  previewRestCss,
+} from "@/utils/codegen";
 import { TARGET_CLASS } from "@/utils/codegen/constants";
 import { cn } from "@/utils/cn";
 
@@ -19,6 +25,8 @@ gsap.registerPlugin(useGSAP, SplitText, CustomEase);
 const SCOPE_ATTR = "data-anim-preview";
 /** ループ再生時、終了から次の再生までの間隔 */
 const LOOP_GAP_MS = 600;
+/** 再生ボタンを押してから、開始状態を見せたままアニメーションを始めるまでの待機時間 */
+const PLAY_HOLD_MS = 200;
 
 type Props = {
   config: AnimationConfig;
@@ -26,8 +34,20 @@ type Props = {
   easing: Easing;
   /** ローカル選択画像の object URL（なければ config の src） */
   imageSrc?: string;
-  /** 「クラスを外す / 付与」ボタンで発火タイミングを切り替える（なければボタンを出さない） */
-  onTriggerModeChange?: (mode: TriggerMode) => void;
+  /**
+   * 表示形式
+   * - full: ツールバー付きの通常表示
+   * - compact: 小さめのステージ（モーダル内のプレビュー用）
+   * - thumbnail: ツールバーなしで親要素いっぱいにループ再生（一覧カードのサムネイル用。playing=false で終了状態を静止表示）
+   */
+  variant?: "full" | "compact" | "thumbnail";
+  /** ループ再生の初期状態（thumbnail は常に true） */
+  defaultLoop?: boolean;
+  /**
+   * 再生するか（thumbnail 用）。false の間は何も動かさず、終了状態で静止表示する。
+   * true に切り替わると最初から再生する
+   */
+  playing?: boolean;
 };
 
 /** 設定自体が無限繰り返しか（ループ再生は不要） */
@@ -43,11 +63,22 @@ function cssTotalMs(config: AnimationConfig) {
   return (delay + duration * count) * 1000;
 }
 
-export function AnimationPreview({ config, easing, imageSrc, onTriggerModeChange }: Props) {
+/** 設定変更 or 再生で要素を作り直すためのキー（count は再生回数） */
+function buildRunKey(count: number, config: AnimationConfig, easing: Easing, imageSrc?: string, playing = true) {
+  return `${playing ? "play" : "rest"}:${count}:${JSON.stringify(config)}:${JSON.stringify(easing)}:${imageSrc ?? ""}`;
+}
+
+export function AnimationPreview({ config, easing, imageSrc, variant = "full", defaultLoop = false, playing = true }: Props) {
+  const compact = variant === "compact";
+  const thumbnail = variant === "thumbnail";
+  // 複数のプレビューが同時にあっても CSS が干渉しないよう、インスタンスごとにスコープを分ける
+  const scopeId = useId();
   const stageRef = useRef<HTMLDivElement>(null);
   const targetRef = useRef<HTMLElement>(null);
   const [playCount, setPlayCount] = useState(0);
-  const [loop, setLoop] = useState(false);
+  const [loop, setLoop] = useState(defaultLoop || thumbnail);
+  // 再生ボタンで始めた実行の runKey。一致する間だけ開始状態を待機表示する（設定変更で runKey が変わると解除される）
+  const [holdKey, setHoldKey] = useState<string | null>(null);
 
   const cls = config.trigger.className;
   const isGsap = config.engine === "gsap";
@@ -56,37 +87,65 @@ export function AnimationPreview({ config, easing, imageSrc, onTriggerModeChange
   const infinite = isInfinite(config);
   const looping = loop && !infinite;
   // 設定変更 or 再生ボタンで要素を作り直して最初から再生
-  const runKey = `${playCount}:${JSON.stringify(config)}:${JSON.stringify(easing)}:${imageSrc ?? ""}`;
+  const runKey = buildRunKey(playCount, config, easing, imageSrc, playing);
+  const hold = playing && holdKey === runKey;
+  const totalMs = cssTotalMs(config);
 
-  const replay = () => setPlayCount((n) => n + 1);
-
-  // CSS: クラス付与時のクラス付与 + ループ再生
+  // GSAP の onComplete など非同期のコールバックから最新のループ状態を読むための ref
+  const loopingRef = useRef(looping);
   useEffect(() => {
-    if (isGsap) return;
+    loopingRef.current = looping;
+  }, [looping]);
+
+  // ループの再開など（待機なし）
+  const replay = () => setPlayCount((n) => n + 1);
+  // 再生ボタン: 開始状態を待機表示してから再生する
+  const play = () => {
+    setPlayCount(playCount + 1);
+    setHoldKey(buildRunKey(playCount + 1, config, easing, imageSrc));
+  };
+
+  // CSS: 開始処理（待機の解除 / クラス付与）。ループの切り替えでは再実行しない
+  useEffect(() => {
+    if (isGsap || !playing) return;
     const el = targetRef.current;
     if (!el) return;
 
     let raf = 0;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    if (classMode) {
+    let holdTimer: ReturnType<typeof setTimeout> | undefined;
+    if (hold) {
+      // 待機中は HOLD_CLASS が開始状態に固定している。外すと transition / animation が有効に戻り、開始状態から再生される
+      holdTimer = setTimeout(() => {
+        el.classList.remove(PREVIEW_HOLD_CLASS);
+        // 開始状態は待機中に描画済みなので、クラス付与は同時に行う（reverse の keyframes で開始状態がちらつかないように）
+        if (classMode) el.classList.add(cls);
+      }, PLAY_HOLD_MS);
+    } else if (classMode) {
       // 開始状態を一度描画してからクラスを付与する
       raf = requestAnimationFrame(() => {
         raf = requestAnimationFrame(() => el.classList.add(cls));
       });
     }
-    if (looping) {
-      timer = setTimeout(replay, cssTotalMs(config) + LOOP_GAP_MS);
-    }
     return () => {
       cancelAnimationFrame(raf);
-      clearTimeout(timer);
+      clearTimeout(holdTimer);
     };
-  }, [runKey, config, isGsap, classMode, cls, looping]);
+  }, [runKey, config, isGsap, classMode, cls, hold, playing]);
+
+  // CSS: ループ再生の次回予約。ループを切ると予約を取り消す（再生中の実行はそのまま終わる）
+  useEffect(() => {
+    if (isGsap || !playing || !looping) return;
+    const timer = setTimeout(
+      () => setPlayCount((n) => n + 1),
+      totalMs + (hold ? PLAY_HOLD_MS : 0) + LOOP_GAP_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [runKey, isGsap, playing, looping, hold, totalMs]);
 
   // GSAP: 生成コードと同じ vars でトゥイーンを作る
   useGSAP(
     () => {
-      if (!isGsap) return;
+      if (!isGsap || !playing) return;
       const el = targetRef.current;
       if (!el) return;
       if (needsCustomEase(easing)) CustomEase.create(easing.id, customEaseData(easing));
@@ -98,34 +157,130 @@ export function AnimationPreview({ config, easing, imageSrc, onTriggerModeChange
           })
         : null;
       const targets = split ? split[config.gsap.splitText.type] : el;
-      const tween = gsap.fromTo(targets, from, { ...to, paused: classMode });
+      // 待機中は fromTo が描画した開始状態のまま止めておく
+      const tween = gsap.fromTo(targets, from, { ...to, paused: classMode || hold });
 
       let timer: ReturnType<typeof setTimeout> | undefined;
-      if (looping) {
-        tween.eventCallback("onComplete", () => {
-          timer = setTimeout(replay, LOOP_GAP_MS);
-        });
-      }
+      // 完了時にループ中なら次回を予約する（ループの切り替えでトゥイーンは作り直さない）
+      tween.eventCallback("onComplete", () => {
+        if (!loopingRef.current) return;
+        timer = setTimeout(() => {
+          if (loopingRef.current) replay();
+        }, LOOP_GAP_MS);
+      });
 
       let raf = 0;
-      if (classMode) {
+      let holdTimer: ReturnType<typeof setTimeout> | undefined;
+      if (hold) {
+        holdTimer = setTimeout(() => tween.play(), PLAY_HOLD_MS);
+      } else if (classMode) {
         raf = requestAnimationFrame(() => {
-          el.classList.add(cls);
           tween.play();
         });
       }
       return () => {
         cancelAnimationFrame(raf);
+        clearTimeout(holdTimer);
         clearTimeout(timer);
         split?.revert();
       };
     },
-    { scope: stageRef, dependencies: [runKey, looping], revertOnUpdate: true },
+    { scope: stageRef, dependencies: [runKey, playing], revertOnUpdate: true },
   );
 
-  const css = generatePreviewCss(config, `[${SCOPE_ATTR}]`, easing);
+  const scope = `[${SCOPE_ATTR}="${scopeId}"]`;
+  const css = [
+    generatePreviewCss(config, scope, easing),
+    hold ? previewHoldCss(config, scope) : "",
+    !playing ? previewRestCss(config, scope) : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
   const { target } = config;
   const Tag = target.tag;
+  const imageSizeClass = thumbnail
+    ? "max-h-[60%] max-w-full"
+    : compact
+      ? "max-h-32 max-w-full"
+      : "max-h-64 max-w-[min(100%,320px)]";
+  // .anim img の規則（max-width: 100%）より優先させるため max-w は ! を付ける。
+  // figure の高さは内容で決まるため、サムネイルの高さ上限は % ではなく固定値にする
+  const wrapperImageSizeClass = thumbnail
+    ? "max-h-24 max-w-full!"
+    : compact
+      ? "max-h-32 max-w-full!"
+      : "max-h-64 max-w-[min(100%,320px)]!";
+
+  const stage = (
+    <div
+      ref={stageRef}
+      {...{ [SCOPE_ATTR]: scopeId }}
+      aria-hidden={thumbnail || undefined}
+      className={cn(
+        "grid place-items-center overflow-hidden bg-stage",
+        !thumbnail && "relative",
+        thumbnail
+          ? "absolute inset-0 p-3"
+          : compact
+            ? "min-h-[200px] p-4"
+            : "min-h-[320px] p-8 lg:min-h-[440px]",
+      )}
+      style={{
+        backgroundImage: "radial-gradient(var(--stage-dot) 1px, transparent 1px)",
+        backgroundSize: "16px 16px",
+      }}
+    >
+      {css && <style>{css}</style>}
+      {target.type === "text" ? (
+        <Tag
+          key={runKey}
+          ref={(el) => {
+            targetRef.current = el;
+          }}
+          className={cn(
+            TARGET_CLASS,
+            hold && PREVIEW_HOLD_CLASS,
+            !playing && PREVIEW_REST_CLASS,
+            "max-w-full text-center font-bold tracking-tight break-words",
+            thumbnail ? "text-xl" : compact ? "text-2xl" : "text-4xl lg:text-6xl",
+          )}
+        >
+          {target.text || " "}
+        </Tag>
+      ) : target.image.wrapper ? (
+        // figure がアニメーション対象。img は生成コードと同じ規則（.anim img）で表示する
+        <figure
+          key={runKey}
+          ref={(el) => {
+            targetRef.current = el;
+          }}
+          className={cn(TARGET_CLASS, hold && PREVIEW_HOLD_CLASS, !playing && PREVIEW_REST_CLASS, "max-w-full")}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element -- 任意の画像 URL をそのまま表示するため */}
+          <img src={imageSrc ?? target.image.src} alt={target.image.alt} className={cn("w-auto", wrapperImageSizeClass)} />
+        </figure>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element -- 任意の画像 URL をそのまま表示するため
+        <img
+          key={runKey}
+          ref={(el) => {
+            targetRef.current = el;
+          }}
+          src={imageSrc ?? target.image.src}
+          alt={target.image.alt}
+          className={cn(
+            TARGET_CLASS,
+            hold && PREVIEW_HOLD_CLASS,
+            !playing && PREVIEW_REST_CLASS,
+            "w-auto",
+            imageSizeClass,
+          )}
+        />
+      )}
+    </div>
+  );
+
+  if (thumbnail) return stage;
 
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-surface">
@@ -134,29 +289,22 @@ export function AnimationPreview({ config, easing, imageSrc, onTriggerModeChange
           <span className="rounded bg-surface-muted px-2 py-0.5 font-medium text-foreground">
             {isGsap ? "GSAP" : config.cssMethod === "transition" ? "CSS transition" : "CSS @keyframes"}
           </span>
-          <span className="flex items-center gap-1.5 font-mono">
-            <span
-              aria-hidden
-              className={cn("size-2 rounded-full", classMode ? "bg-emerald-500" : "bg-border")}
-            />
-            {classMode ? `.${cls} 付与中` : "クラスなし"}
-          </span>
         </div>
         <div className="flex flex-wrap gap-2">
-          {onTriggerModeChange && (
-            <Button
-              size="sm"
-              onClick={() => onTriggerModeChange(classMode ? "load" : "class")}
-            >
-              {classMode ? `.${cls} を外す` : `.${cls} を付与`}
-            </Button>
-          )}
           <Button
             size="sm"
             aria-pressed={looping}
             disabled={infinite}
             title={infinite ? "無限に繰り返す設定のためループ再生は不要です" : undefined}
-            onClick={() => setLoop((v) => !v)}
+            onClick={() => {
+              // ON にした瞬間に「再生」と同じ動きで始める。OFF は再生中の実行が終わって止まるだけ
+              if (!looping) {
+                setLoop(true);
+                play();
+              } else {
+                setLoop(false);
+              }
+            }}
             className={cn(looping && "border-accent text-accent")}
           >
             {looping ? (
@@ -175,7 +323,7 @@ export function AnimationPreview({ config, easing, imageSrc, onTriggerModeChange
             )}
             {looping ? "停止" : "ループ再生"}
           </Button>
-          <Button size="sm" variant="primary" onClick={replay}>
+          <Button size="sm" variant="primary" onClick={play}>
             <svg aria-hidden viewBox="0 0 16 16" className="size-3.5">
               <path d="M5 3.5v9l7-4.5z" fill="currentColor" />
             </svg>
@@ -184,39 +332,7 @@ export function AnimationPreview({ config, easing, imageSrc, onTriggerModeChange
         </div>
       </div>
 
-      <div
-        ref={stageRef}
-        {...{ [SCOPE_ATTR]: "" }}
-        className="relative grid min-h-[320px] place-items-center overflow-hidden bg-stage p-8 lg:min-h-[440px]"
-        style={{
-          backgroundImage: "radial-gradient(var(--stage-dot) 1px, transparent 1px)",
-          backgroundSize: "16px 16px",
-        }}
-      >
-        {css && <style>{css}</style>}
-        {target.type === "text" ? (
-          <Tag
-            key={runKey}
-            ref={(el) => {
-              targetRef.current = el;
-            }}
-            className={cn(TARGET_CLASS, "max-w-full text-center text-4xl font-bold tracking-tight break-words lg:text-6xl")}
-          >
-            {target.text || " "}
-          </Tag>
-        ) : (
-          // eslint-disable-next-line @next/next/no-img-element -- 任意の画像 URL をそのまま表示するため
-          <img
-            key={runKey}
-            ref={(el) => {
-              targetRef.current = el;
-            }}
-            src={imageSrc ?? target.image.src}
-            alt={target.image.alt}
-            className={cn(TARGET_CLASS, "max-h-64 w-auto max-w-[min(100%,320px)]")}
-          />
-        )}
-      </div>
+      {stage}
     </div>
   );
 }

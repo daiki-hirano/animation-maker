@@ -18,7 +18,7 @@ const CARDS = [
     href: "/presets",
     title: "プリセット",
     body: "よく使うアニメーションを選んで、パラメータだけ調整します。",
-    ready: false,
+    ready: true,
   },
 ] as const;
 
@@ -28,7 +28,7 @@ export default function Home() {
       <PageHeader
         size="lg"
         title="Animation Maker"
-        description="アニメーションを UI で確認・調整し、HTML / Pug / React と SCSS・JS のコードをそのままコピーして使えます。"
+        description="アニメーションを UI で確認・調整し、HTML / Pug / React と CSS・JS のコードをそのままコピーして使えます。"
       />
 
       <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

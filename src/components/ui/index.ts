@@ -1,7 +1,9 @@
 export { Button } from "./Button";
+export { Checkbox } from "./Checkbox";
 export { CodeBlock } from "./CodeBlock";
 export { CopyButton } from "./CopyButton";
 export { Field, inputClass } from "./Field";
+export { Modal } from "./Modal";
 export { NumberInput } from "./NumberInput";
 export { PanelSection } from "./PanelSection";
 export { RangeField } from "./RangeField";

@@ -4,7 +4,7 @@ import { PageHeader } from "./PageHeader";
 
 /**
  * エディタ画面のレイアウト
- * - 左: プレビュー / 右: コントロールパネル
+ * - 左: プレビュー / 右: コントロールパネル（ヘッダー固定 + 本体スクロール）
  * - 下: コード表示
  * 新規作成・プリセットの両方で使う
  */
@@ -12,12 +12,16 @@ export function EditorLayout({
   title,
   description,
   preview,
+  panelHeader,
   panel,
   code,
 }: {
   title: string;
   description?: string;
   preview: ReactNode;
+  /** パネル上部に固定表示するヘッダー */
+  panelHeader: ReactNode;
+  /** パネル本体（はみ出した分はスクロールする） */
   panel: ReactNode;
   code: ReactNode;
 }) {
@@ -29,11 +33,14 @@ export function EditorLayout({
         <section aria-label="プレビュー" className="min-w-0 lg:sticky lg:top-20 lg:self-start">
           {preview}
         </section>
+        {/* コード表示までの距離を短くするため、パネルは最大 800px でスクロールさせ、ヘッダーは固定する。
+            lg:self-start でグリッド行の高さに引き伸ばされず、内容が短いときは内容の高さになる */}
         <aside
           aria-label="アニメーションプロパティ"
-          className="overflow-hidden rounded-xl border border-border bg-surface"
+          className="flex max-h-[800px] flex-col overflow-hidden rounded-xl border border-border bg-surface lg:self-start"
         >
-          {panel}
+          <div className="shrink-0 border-b border-border">{panelHeader}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{panel}</div>
         </aside>
       </div>
 

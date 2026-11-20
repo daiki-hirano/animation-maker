@@ -1,10 +1,11 @@
 "use client";
 
+import { useId, useState } from "react";
 import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { EasingCurve } from "@/components/easing/EasingCurve";
-import { PanelSection, RangeField, Select, Switch } from "@/components/ui";
+import { Field, PanelSection, RangeField, Select, Switch } from "@/components/ui";
 import {
-  EASING_GROUP_LABELS,
   cssEasingValue,
   gsapEaseName,
   needsCustomEase,
@@ -13,15 +14,22 @@ import {
 import type {
   KeyframesDirection,
   KeyframesFillMode,
-  TransitionPropertyMode,
 } from "@/utils/animation/types";
 import { useEasings } from "@/hooks/useEasings";
+import { EasingPickerModal } from "../EasingPickerModal";
 import type { SectionProps } from "./types";
 
 const DIRECTIONS: KeyframesDirection[] = ["normal", "reverse", "alternate", "alternate-reverse"];
 const FILL_MODES: KeyframesFillMode[] = ["none", "forwards", "backwards", "both"];
 
-export function TimingSection({ config, update }: SectionProps) {
+type Props = SectionProps & {
+  /** ローカル選択画像の object URL（イージング選択モーダルのプレビュー用） */
+  imageSrc?: string;
+};
+
+export function TimingSection({ config, update, imageSrc }: Props) {
+  const easingButtonId = useId();
+  const [pickerOpen, setPickerOpen] = useState(false);
   const { timing, engine, cssMethod, keyframes, gsap } = config;
   const isGsap = engine === "gsap";
   const easings = useEasings();
@@ -54,47 +62,43 @@ export function TimingSection({ config, update }: SectionProps) {
         value={timing.delay}
         onValueChange={(delay) => update("timing", { delay })}
       />
-      <Select
-        label="easing"
-        value={easing.id}
-        onValueChange={(id) => update("timing", { easing: id })}
-        options={easings.map((e) => ({
-          value: e.id,
-          label: e.name,
-          group: EASING_GROUP_LABELS[e.group],
-        }))}
-        hint={easingHint}
-      />
-      <div className="flex items-center gap-3">
-        <span className="rounded border border-border bg-surface p-0.5 text-foreground">
-          <EasingCurve bezier={easing.bezier} />
-        </span>
-        <div className="flex min-w-0 flex-col">
-          <span className="truncate font-mono text-[11px] text-muted">
-            {cssEasingValue(easing)}
+      <Field label="easing" htmlFor={easingButtonId} hint={easingHint}>
+        <button
+          id={easingButtonId}
+          type="button"
+          aria-haspopup="dialog"
+          onClick={() => setPickerOpen(true)}
+          className="flex w-full cursor-pointer items-center gap-3 rounded-md border border-border bg-surface px-2 py-1.5 text-left text-foreground transition-colors hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
+          <span className="rounded border border-border bg-surface p-0.5">
+            <EasingCurve bezier={easing.bezier} />
           </span>
-          <Link
-            href="/easings"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-accent underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-accent"
-          >
-            イージングを管理
-          </Link>
-        </div>
-      </div>
-
-      {!isGsap && cssMethod === "transition" && (
-        <Select<TransitionPropertyMode>
-          label="transition-property"
-          value={config.transition.property}
-          onValueChange={(property) => update("transition", { property })}
-          options={[
-            { value: "auto", label: "自動（変化するプロパティのみ）" },
-            { value: "all", label: "all" },
-          ]}
-        />
-      )}
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate text-sm font-medium">{easing.name}</span>
+            <span className="truncate font-mono text-[11px] text-muted">
+              {cssEasingValue(easing)}
+            </span>
+          </span>
+          <ChevronRight aria-hidden className="size-4 shrink-0 text-muted" />
+        </button>
+      </Field>
+      <Link
+        href="/easings"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="self-start text-xs text-accent underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-accent"
+      >
+        イージングを管理
+      </Link>
+      <EasingPickerModal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        config={config}
+        easings={easings}
+        easing={easing}
+        onSelect={(id) => update("timing", { easing: id })}
+        imageSrc={imageSrc}
+      />
 
       {!isGsap && cssMethod === "keyframes" && (
         <>
@@ -103,16 +107,6 @@ export function TimingSection({ config, update }: SectionProps) {
             checked={keyframes.iterationCount === 0}
             onCheckedChange={(on) => update("keyframes", { iterationCount: on ? 0 : 1 })}
           />
-          {keyframes.iterationCount !== 0 && (
-            <RangeField
-              label="iteration-count"
-              unit="回"
-              min={1}
-              max={10}
-              value={keyframes.iterationCount}
-              onValueChange={(iterationCount) => update("keyframes", { iterationCount })}
-            />
-          )}
           <Select<KeyframesDirection>
             label="direction"
             value={keyframes.direction}
